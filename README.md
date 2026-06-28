@@ -8,6 +8,10 @@ Natural language database analyst powered by LLaMA 3.3-70b & Groq
 -  Custom dashboard builder
 -  Query history & favorites
 -  Multi-database support
+-  Export data as CSV and charts as PNG
+-  ER diagrams & flowcharts
+-  Real-time SQL preview
+-  Powered by LLaMA 3.3-70b via Groq API
 
 ## Live Demo
 https://datamindai-mek7vq4anjiouebhmmykt5.streamlit.app
