@@ -478,11 +478,33 @@ def execute_query(sql, db_path=None):
     except Exception as e:
         return {"error": str(e)}
 
+def sanitize_col(col, df):
+    """If col not in df, try to find the closest real column name."""
+    if col in df.columns:
+        return col
+    # Try case-insensitive match
+    for c in df.columns:
+        if c.lower() == col.lower():
+            return c
+    # Try stripping common SQL expressions: COUNT(id) -> count, SUM(total) -> total
+    import re as _re
+    stripped = _re.sub(r'\w+\((\w+)\)', r'\1', col).lower()
+    for c in df.columns:
+        if c.lower() == stripped or stripped in c.lower():
+            return c
+    # Last resort: pick last column for y, first for x
+    if len(df.columns) >= 2:
+        return df.columns[-1] if col == col else df.columns[0]
+    return col
+
 def generate_chart(chart_type, sql, x_col, y_col, title="Chart", db_path=None):
     result = execute_query(sql, db_path)
     if "error" in result:
         return result
     df = result["df"]
+    # Auto-fix column names if model used raw expressions instead of aliases
+    x_col = sanitize_col(x_col, df)
+    y_col = sanitize_col(y_col, df)
     try:
         kw = dict(template="plotly_dark", title=title)
         if chart_type == "bar":
@@ -562,14 +584,19 @@ SQLite e-commerce database — EXACT tables and columns (never invent others):
   inventory : id, product_id, restock_date, quantity_added
 
 STRICT RULES:
-1. NEVER pass a db_path argument to any tool. The database path is handled automatically by the server.
+1. NEVER pass a db_path argument to any tool. The database path is handled automatically.
 2. Use ONLY the exact column names listed above. Never guess or invent column names.
 3. Revenue = orders.total. Join orders to products: products.id = orders.product_id.
-4. User asks for chart / graph / visual → call generate_chart.
-5. User asks for diagram / ER / flowchart → call generate_flowchart.
-6. Data questions → execute_query or explain_data.
-7. After results give a short (2-3 sentence) plain-English insight.
-8. If a query fails, explain exactly what went wrong. NEVER say 'try rephrasing'."""
+4. ALWAYS use simple aliases in SQL. NEVER use raw expressions like COUNT(id) or SUM(total) as column names.
+   CORRECT:   SELECT status, COUNT(id) AS count FROM orders GROUP BY status
+   CORRECT:   SELECT name, SUM(total) AS revenue FROM ...
+   WRONG:     COUNT(id) or SUM(orders.total) used directly as x_col or y_col
+5. x_col and y_col in generate_chart must EXACTLY match the alias used in the SQL SELECT.
+6. User asks for chart/graph/visual → call generate_chart.
+7. User asks for diagram/ER/flowchart → call generate_flowchart.
+8. Data questions → execute_query or explain_data.
+9. After results give a short (2-3 sentence) plain-English insight.
+10. If a query fails, explain exactly what went wrong. NEVER say 'try rephrasing'."""
 
 # ── AGENT ─────────────────────────────────────────────────────────────────────
 def run_agent(user_input):
@@ -878,45 +905,43 @@ with chat_tab:
           <div class="welcome-logo">🧠</div>
           <div class="welcome-title">What do you want to know?</div>
           <div class="welcome-sub">Ask anything about your database in plain English.</div>
-          <div class="chip-grid">
-            <div class="chip" onclick="window.parent.postMessage({type:'chip',q:'Top 5 products by revenue'},'*')">
-              <div class="chip-icon">📊</div>
-              <div class="chip-text">Top 5 products by revenue</div>
-            </div>
-            <div class="chip" onclick="window.parent.postMessage({type:'chip',q:'Sales by category pie chart'},'*')">
-              <div class="chip-icon">🥧</div>
-              <div class="chip-text">Sales by category — pie chart</div>
-            </div>
-            <div class="chip" onclick="window.parent.postMessage({type:'chip',q:'Monthly orders trend'},'*')">
-              <div class="chip-icon">📈</div>
-              <div class="chip-text">Monthly orders trend</div>
-            </div>
-            <div class="chip" onclick="window.parent.postMessage({type:'chip',q:'Draw the ER diagram'},'*')">
-              <div class="chip-icon">🔀</div>
-              <div class="chip-text">Draw the ER diagram</div>
-            </div>
-            <div class="chip" onclick="window.parent.postMessage({type:'chip',q:'Low stock products'},'*')">
-              <div class="chip-icon">📦</div>
-              <div class="chip-text">Low stock products</div>
-            </div>
-            <div class="chip" onclick="window.parent.postMessage({type:'chip',q:'Average order value'},'*')">
-              <div class="chip-icon">💰</div>
-              <div class="chip-text">Average order value</div>
-            </div>
-          </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Streamlit buttons as fallback (hidden chips trigger auto_send)
-        fallback_chips = [
-            "Top 5 products by revenue", "Sales by category pie chart",
-            "Monthly orders trend", "Draw the ER diagram",
-            "Low stock products", "Average order value",
+        chips = [
+            ("📊", "Top 5 products by revenue"),
+            ("🥧", "Sales by category — pie chart"),
+            ("📈", "Monthly orders trend"),
+            ("🔀", "Draw the ER diagram"),
+            ("📦", "Low stock products"),
+            ("💰", "Average order value"),
         ]
-        cols = st.columns(3)
-        for i, chip in enumerate(fallback_chips):
-            if cols[i % 3].button(chip, key=f"chip_{i}", use_container_width=True):
-                st.session_state.auto_send = chip
+        st.markdown("""
+        <style>
+        div[data-testid="column"] .stButton > button {
+            background: #2a2a2a !important;
+            border: 1px solid #3f3f3f !important;
+            border-radius: 12px !important;
+            color: #c5c5c5 !important;
+            font-size: 0.85rem !important;
+            padding: 14px 16px !important;
+            text-align: left !important;
+            height: auto !important;
+            line-height: 1.5 !important;
+            transition: all 0.15s !important;
+        }
+        div[data-testid="column"] .stButton > button:hover {
+            background: #333 !important;
+            border-color: #10a37f55 !important;
+            color: #ececec !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        cols = st.columns(2)
+        for i, (icon, label) in enumerate(chips):
+            if cols[i % 2].button(f"{icon}  {label}", key=f"chip_{i}", use_container_width=True):
+                st.session_state.auto_send = label
 
     # ── Auto-send ──────────────────────────────────────────────────
     if st.session_state.auto_send:
