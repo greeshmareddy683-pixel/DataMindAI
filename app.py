@@ -18,6 +18,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Read API key from Streamlit secrets (cloud) or .env (local)
+GROQ_API_KEY = None
+try:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+except Exception:
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 # ── MASTER CSS — ChatGPT-grade polish ─────────────────────────────────────────
 st.markdown("""
 <style>
@@ -424,7 +431,6 @@ for k, v in DEFAULTS.items():
         st.session_state[k] = v
 
 # ── GROQ CLIENT ───────────────────────────────────────────────────────────────
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ── DATABASE HELPERS ──────────────────────────────────────────────────────────
