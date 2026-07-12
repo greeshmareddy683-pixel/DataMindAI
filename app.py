@@ -619,7 +619,7 @@ def run_agent(user_input):
     for _ in range(10):
         try:
             response = client.chat.completions.create(
-                model="llama3-groq-70b-8192-tool-use-preview",
+              model="openai/gpt-oss-120b",
                 messages=messages,
                 tools=TOOL_DEFS,
                 tool_choice="auto",
@@ -643,7 +643,12 @@ def run_agent(user_input):
             for tc in msg.tool_calls:
                 fn = tc.function.name
                 try:
-                    args = json.loads(tc.function.arguments)
+                    raw = tc.function.arguments.strip()
+                    if raw.startswith('['):
+                        raw = raw[1:]
+                    if raw.endswith(']'):
+                        raw = raw[:-1]
+                    args = json.loads(raw)
                     result = DISPATCH[fn](args)
                 except Exception as e:
                     result = {"error": str(e)}
