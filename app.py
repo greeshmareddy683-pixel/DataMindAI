@@ -551,7 +551,7 @@ def generate_flowchart(diagram_type, description, db_path=None):
     A([Customer Places Order]) --> B[Order Created - PENDING]
     B --> C{Payment Verified?}
     C -->|Yes| D[Order SHIPPED]
-    C -->|No| E[Order CANCELLED]
+    C -->|No| E[Order CANCELLEDSYSTEM_]
     D --> F[Order DELIVERED]
     F --> G([Inventory Updated])"""
     return {"mermaid": mermaid, "type": "flowchart"}
@@ -581,29 +581,30 @@ TOOL_DEFS = [
     {"type": "function", "function": {"name": "explain_data", "description": "Fetch data and provide plain-English insights and summary statistics.", "parameters": {"type": "object", "properties": {"sql": {"type": "string"}, "question": {"type": "string"}}, "required": ["sql", "question"]}}},
 ]
 
-SYSTEM_PROMPT = """You are DataMind AI — a sharp, friendly database analyst. You speak plain English and give concise, useful answers.
+SYSTEM_PROMPT = """You are DataMind AI — a sharp, friendly database analyst.
 
-SQLite e-commerce database — EXACT tables and columns (never invent others):
+SQLite e-commerce database — EXACT tables and columns:
   customers : id, name, email, city, created_at
   products  : id, name, category, price, stock
   orders    : id, customer_id, product_id, quantity, total, status, order_date
   inventory : id, product_id, restock_date, quantity_added
 
 STRICT RULES:
-1. NEVER pass a db_path argument to any tool. The database path is handled automatically.
-2. Use ONLY the exact column names listed above. Never guess or invent column names.
-3. Revenue = orders.total. Join orders to products: products.id = orders.product_id.
-4. ALWAYS use simple aliases in SQL. NEVER use raw expressions like COUNT(id) or SUM(total) as column names.
-   CORRECT:   SELECT status, COUNT(id) AS count FROM orders GROUP BY status
-   CORRECT:   SELECT name, SUM(total) AS revenue FROM ...
-   WRONG:     COUNT(id) or SUM(orders.total) used directly as x_col or y_col
-5. x_col and y_col in generate_chart must EXACTLY match the alias used in the SQL SELECT.
-6. User asks for chart/graph/visual → call generate_chart.
-7. User asks for diagram/ER/flowchart → call generate_flowchart.
-8. Data questions → execute_query or explain_data.
-9. After results give a short (2-3 sentence) plain-English insight.
-10. If a query fails, explain exactly what went wrong. NEVER say 'try rephrasing'."""
-
+1. NEVER pass db_path to any tool.
+2. Use ONLY exact column names above.
+3. Revenue = orders.total. Join: products.id = orders.product_id.
+4. ALWAYS alias aggregations in SQL:
+   CORRECT: SELECT category, SUM(total) AS revenue ... GROUP BY category
+   CORRECT: SELECT status, COUNT(id) AS count ... GROUP BY status
+5. x_col and y_col must EXACTLY match the SQL alias.
+6. ALWAYS call tools with a single valid JSON object. NEVER use arrays.
+   CORRECT: generate_chart({"chart_type": "pie", "sql": "...", "x_col": "category", "y_col": "revenue"})
+   WRONG:   generate_chart([{"chart_type": "pie", ...}])
+7. chart/graph/visual → generate_chart
+8. diagram/ER/flowchart → generate_flowchart
+9. data questions → execute_query or explain_data
+10. Give 2-3 sentence plain-English insight after results.
+11. Never say 'try rephrasing' — explain exactly what went wrong."""
 # ── AGENT ─────────────────────────────────────────────────────────────────────
 def run_agent(user_input):
     if not client:
@@ -618,7 +619,7 @@ def run_agent(user_input):
     for _ in range(10):
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="llama3-groq-70b-8192-tool-use-preview",
                 messages=messages,
                 tools=TOOL_DEFS,
                 tool_choice="auto",
