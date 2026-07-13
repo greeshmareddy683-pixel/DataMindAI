@@ -21,8 +21,10 @@ st.set_page_config(
 # Read API key from Streamlit secrets (cloud) or .env (local)
 GROQ_API_KEY = None
 try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
 except Exception:
+    pass
+if not GROQ_API_KEY:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # ── MASTER CSS — ChatGPT-grade polish ─────────────────────────────────────────
